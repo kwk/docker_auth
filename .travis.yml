@@ -7,9 +7,9 @@ go:
 sudo: false
 
 install:
-  - cd $GOPATH/src/github.com/kwk/docker_auth
+  - cd $GOPATH/src/github.com/kwk/docker_auth/auth_server
   - go get
-  - go install github.com/kwk/docker_auth
+  - go install github.com/kwk/docker_auth/auth_server
 
 script:
   - go test -v ./...
