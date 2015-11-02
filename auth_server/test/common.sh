@@ -32,7 +32,7 @@ cleanup() {
   # Shutdown auth_server process if it is still running
   killall $PROGNAME
   cd $OLDPWD
-  exit $EXITCOE
+  exit $EXITCODE
 }
 
 # Fires an authorization requests to the auth_server to see if it is responding
