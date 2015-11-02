@@ -1,30 +1,46 @@
 #!/bin/bash
 
-# Exit on error, unitialized variables, and show commands 
-set -eux
+# Exit on error and unitialized variables
+set -eu
 
 # Remember current working directory
+PROGNAME=auth_server
 OLDPWD=$PWD
-TEMPDIR=$(mktemp -d)
+LOGDIR=$(mktemp -d)
+NUMERRORS=0
+NUMTESTS=0
+
+log() {
+  echo "[$(date -u)] $@" 1>&2
+}
+logtest() {
+  echo "$@" 1>&2
+}
+
 cleanup() {
-  ls -lha $TEMPDIR/log/
+  if [ "$NUMERRORS" != "0" ]; then
+    log "$NUMERRORS of $NUMTESTS tests were failing!"
+  else
+    log "All tests were passing!"
+  fi
+  log "Logs are in $LOGDIR"
+  log "Shutting down $PROGNAME"
   # Shutdown auth_server process if it is still running
   killall auth_server
-  rm -rf $TEMPDIR
   cd $OLDPWD
 }
 
 trap "cleanup" EXIT
 
 # Build the auth_server
+log "Building $PROGNAME"
 cd ../
 go build
 
-LOGDIR=$TEMPDIR/log
-mkdir -p $LOGDIR
-./auth_server -v 5 -log_dir=$LOGDIR test/config/testconfig.yml &
+log "Starting $PROGNAME"
+./$PROGNAME -v 5 -log_dir=$LOGDIR test/config/testconfig.yml &
 
-# Wait for server to start 
+# Wait for server to start
 # TODO: (kwk) optimize with loop waiting on port
 sleep 2
 
@@ -35,20 +51,19 @@ testAuth() {
   authHeader="$2"
   URL="$3"
   msg=$4
-  
-  
-  set -x
+
+  NUMTESTS=$((NUMTESTS+1))
+
   respCode=$(curl -sk --output /dev/null --write-out '%{http_code}' -H "$authHeader" "$URL")
-  set +x
   if [ "$respCode" != "$expectedResponseCode" ]; then
     echo "TEST FAILED: $msg" 1>&2
     echo " - Expected $expectedResponseCode and got \"$respCode\" with authHeader=\"$authHeader\" and URL=\"$URL\"" 1>&2
-    cat $LOGDIR/auth_server.INFO
-    exit 2
+    #cat $LOGDIR/$PROGNAME.* 1>&2
+    NUMERRORS=$((NUMERRORS+1))
+    #exit 2
   else
-    echo "TEST PASSED: $msg" 1>&2
-#    echo " - Expected $expectedResponseCode and got \"$respCode\" with authHeader=\"$authHeader\" and URL=\"$URL\"" 1>&2
-  fi  
+    logtest "TEST PASSED: $msg"
+  fi
 }
 
 adminAuthHeader="Authorization: Basic $(echo -n "admin:badmin" | base64)"
@@ -57,6 +72,8 @@ test1AuthHeader="Authorization: Basic $(echo -n "test1:123" | base64)"
 test2AuthHeader="Authorization: Basic $(echo -n "test2:123" | base64)"
 
 baseUrl="https://localhost:5001/auth?service=registry.docker.io&scope=repository:"
+
+log "Starting tests"
 
 # Admin has full access to everything.
 testAuth "200" "$adminAuthHeader" "${baseUrl}randomuser/randomrepo:pull,push" 'Admin has full access to everything.'
@@ -76,9 +93,7 @@ testAuth "200" "$test1AuthHeader" "${baseUrl}test1-with-suffix/randomrepo:push" 
 
 # Anonymous users can pull "hello-world".
 testAuth "200" "" "${baseUrl}hello-world:pull" 'Anonymous users can pull "hello-world". (1)'
-testAuth "200" "" "$b{aseUrl}randomuser/hello-world:pull" 'Anonymous users can pull "hello-world". (2)'
+testAuth "200" "" "${baseUrl}randomuser/hello-world:pull" 'Anonymous users can pull "hello-world". (2)'
 
 # Access is denied by default.
-testAuth "200" "$test1AuthHeader" "$baseUrl&scope=repository:randomuser/randomrepo:push" 'Access is denied by default.'
-
-
+testAuth "200" "$test1AuthHeader" "${baseUrl}randomuser/randomrepo:push" 'Access is denied by default.'
