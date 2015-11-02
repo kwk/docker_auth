@@ -1,12 +1,5 @@
 #!/bin/bash
 
-THISDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # directory of this script
-PROGNAME=auth_server
-OLDPWD=$PWD
-LOGDIR=$(mktemp -d)
-NUMERRORS=0
-NUMTESTS=0
-
 # Outputs everything to stderr with a UTC datetime prefixed in braces "[]"
 log() {
   echo "[$(date -u)] $@" 1>&2
@@ -14,7 +7,7 @@ log() {
 
 # Outputs everything to stderr
 logtest() {
-  echo "$@" 1>&2
+  echo -e "$@" 1>&2
 }
 
 # Prints a summary of passed and failed tests and shows where to find the logs.
@@ -22,7 +15,12 @@ logtest() {
 cleanup() {
   EXITCODE=0
   if [ "$NUMERRORS" != "0" ]; then
-    log "$NUMERRORS of $NUMTESTS tests were failing!"
+    log "$NUMERRORS of $NUMTESTS tests were failing:"
+    echo "" 1>&2
+    echo "----------------------------------------------------------------" 1>&2
+    cat $FAILEDTESTS 1>&2
+    echo "----------------------------------------------------------------" 1>&2
+    echo "" 1>&2
     EXITCODE=1
   else
     log "All $NUMTESTS tests were passing!"
@@ -35,8 +33,52 @@ cleanup() {
   exit $EXITCODE
 }
 
-# Fires an authorization requests to the auth_server to see if it is responding
-# correctly. The inputs are:
+# Sets up some paths and variables and builds or reuses the auth_server artifact.
+# The first argument must be the path to the config file to be used by the
+# auth_server.
+setuptest() {
+  if [ "$#" != "1" ]; then
+    log "You must specify a config file for the auth_server."
+    exit 2
+  fi
+
+  trap "cleanup" EXIT
+  THISDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # directory of this script
+  PROGNAME=auth_server
+  OLDPWD=$PWD
+  LOGDIR=$(mktemp -d)
+  NUMERRORS=0
+  NUMTESTS=0
+  FAILEDTESTS=$LOGDIR/failed_tests.txt
+  CONFIGFILE=$1
+
+  # If the ENV_NOCOLOR environment variable is set, don't output colorful reports.
+  set +u
+  if [ -z "$ENV_NOCOLOR" ]; then
+    COLOR_ERROR='\033[0;31m' # Red
+    COLOR_SUCCESS='\033[0;32m' # Green
+    COLOR_NONE='\033[0m' # No Color
+  else
+    COLOR_ERROR=''
+    COLOR_SUCCESS=''
+    COLOR_NONE='' # No Color
+  fi
+  set -u
+
+  # Build the auth_server or reuse an existing artifact
+  cd $TESTDIR/..
+  if [ ! -e "$PROGNAME" ]; then
+    log "Building $PROGNAME"
+    go build
+  else
+    log "Found already existing $PROGNAME (skipping build)."
+  fi
+}
+
+# Starts the auth_server and fires an authorization requests to it to see if it
+# is responding correctly. Then, the server is shutdown.
+#
+# The inputs are:
 #
 # 1. Expected Result Code (e.g. "200", or "401")
 # 2. The auth Header with which to authenticate, e.g. "Authorization: Basic $(echo -n "test:123" | base64)"
@@ -49,15 +91,25 @@ testAuth() {
   msg=$4
 
   NUMTESTS=$((NUMTESTS+1))
+  LOGFILE=$LOGDIR/$PROGNAME.log.$NUMTESTS
+
+  # Start the auth server
+  ./$PROGNAME -v 5 -alsologtostderr=true $CONFIGFILE > $LOGFILE 2>&1 & #-log_dir=$LOGDIR
+  sleep 2
 
   respCode=$(curl -sk --output /dev/null --write-out '%{http_code}' -H "$authHeader" "$URL")
   if [ "$respCode" != "$expectedResponseCode" ]; then
-    echo "TEST FAILED: $msg" 1>&2
-    echo " - Expected $expectedResponseCode and got \"$respCode\" with authHeader=\"$authHeader\" and URL=\"$URL\"" 1>&2
+    echo -e "${COLOR_ERROR}TEST FAILED: $msg${COLOR_NONE}" | tee --append $FAILEDTESTS 1>&2
+    echo -e " - Expected $expectedResponseCode and got \"$respCode\" with authHeader=\"$authHeader\" and URL=\"$URL\"" 1>&2
+    echo -e "-------------------------   LOG   ------------------------------" 1>&2
+    cat $LOGFILE
+    echo -e "----------------------------------------------------------------" 1>&2
     #cat $LOGDIR/$PROGNAME.* 1>&2
     NUMERRORS=$((NUMERRORS+1))
     #exit 2
   else
-    logtest "TEST PASSED: $msg"
+    logtest "${COLOR_SUCCESS}TEST PASSED: $msg${COLOR_NONE}"
   fi
+
+  killall $PROGNAME
 }

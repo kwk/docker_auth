@@ -7,22 +7,7 @@ TESTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # directory of this 
 
 # Load in functions shared by multiple tests
 source $TESTDIR/common.sh
-trap "cleanup" EXIT
-
-# Build the auth_server or reuse an existing artifact
-cd $TESTDIR/..
-if [ ! -e "$PROGNAME" ]; then
-  log "Building $PROGNAME"
-  go build
-else
-  log "Found already existing $PROGNAME (skipping build)."
-fi
-
-WAITFORSTARTUP=2
-log "Starting $PROGNAME and waiting $WAITFORSTARTUP seconds to finish"
-./$PROGNAME -v 1 -log_dir=$LOGDIR test/config/testconfig.yml &
-# TODO: (kwk) optimize with loop waiting on port
-sleep $WAITFORSTARTUP
+setuptest test/config/static-acls.yml
 
 # Configure Basic auth authorization headers
 adminAuthHeader="Authorization: Basic $(echo -n "admin:badmin" | base64)"
@@ -30,6 +15,7 @@ testAuthHeader="Authorization: Basic $(echo -n "test:123" | base64)"
 test1AuthHeader="Authorization: Basic $(echo -n "test1:123" | base64)"
 test2AuthHeader="Authorization: Basic $(echo -n "test2:123" | base64)"
 
+# The auth_server will be running on port 5001 as defined in the test/config/static-acls.yml
 baseUrl="https://localhost:5001/auth?service=registry.docker.io&scope=repository:"
 
 log "Starting tests"
