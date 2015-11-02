@@ -20,8 +20,10 @@ logtest() {
 # Prints a summary of passed and failed tests and shows where to find the logs.
 # Then the server is stopped.
 cleanup() {
+  EXITCODE=0
   if [ "$NUMERRORS" != "0" ]; then
     log "$NUMERRORS of $NUMTESTS tests were failing!"
+    EXITCODE=1
   else
     log "All $NUMTESTS tests were passing!"
   fi
@@ -30,6 +32,7 @@ cleanup() {
   # Shutdown auth_server process if it is still running
   killall $PROGNAME
   cd $OLDPWD
+  exit $EXITCOE
 }
 
 # Fires an authorization requests to the auth_server to see if it is responding
