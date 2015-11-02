@@ -13,4 +13,4 @@ install:
 
 script:
   - go test -v ./...
-  - ./auth_server/test-static-acl.sh
+  - cd ./auth_server/test/ && ./test-static-acl.sh
