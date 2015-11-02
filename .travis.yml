@@ -7,11 +7,12 @@ go:
 sudo: false
 
 install:
+  - echo $PWD
   - cd $GOPATH/src/github.com/kwk/docker_auth/auth_server
   - go get
   - go install github.com/kwk/docker_auth/auth_server
 
 script:
-  - go test -v ./...
   - echo $PWD
-  - cd ./auth_server/test/ && ./test-static-acl.sh
+  - go test -v ./...
+  - cd test/ && ./test-static-acl.sh
