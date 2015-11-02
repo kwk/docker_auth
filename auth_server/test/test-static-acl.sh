@@ -3,68 +3,29 @@
 # Exit on error and unitialized variables
 set -eu
 
-# Remember current working directory
-PROGNAME=auth_server
-OLDPWD=$PWD
-LOGDIR=$(mktemp -d)
-NUMERRORS=0
-NUMTESTS=0
+TESTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" # directory of this script
 
-log() {
-  echo "[$(date -u)] $@" 1>&2
-}
-logtest() {
-  echo "$@" 1>&2
-}
-
-cleanup() {
-  if [ "$NUMERRORS" != "0" ]; then
-    log "$NUMERRORS of $NUMTESTS tests were failing!"
-  else
-    log "All tests were passing!"
-  fi
-  log "Logs are in $LOGDIR"
-  log "Shutting down $PROGNAME"
-  # Shutdown auth_server process if it is still running
-  killall auth_server
-  cd $OLDPWD
-}
+# Load in functions shared by multiple tests
+source $TESTDIR/common.sh
 
 trap "cleanup" EXIT
 
 # Build the auth_server
-log "Building $PROGNAME"
-cd ../
-go build
+cd $TESTDIR/..
+if [ ! -e "$PROGNAME" ]; then
+  log "Building $PROGNAME"
+  go build
+else
+  log "Found already existing $PROGNAME (skipping build)."
+fi
 
-log "Starting $PROGNAME"
-./$PROGNAME -v 5 -log_dir=$LOGDIR test/config/testconfig.yml &
+WAITFORSTARTUP=2
+log "Starting $PROGNAME and wait $WAITFORSTARTUP seconds to finish"
+./$PROGNAME -v 1 -log_dir=$LOGDIR test/config/testconfig.yml &
 
 # Wait for server to start
 # TODO: (kwk) optimize with loop waiting on port
-sleep 2
-
-# Fire some authorization requests to the auth_server to see if it is responding
-# correctly.
-testAuth() {
-  expectedResponseCode=$1
-  authHeader="$2"
-  URL="$3"
-  msg=$4
-
-  NUMTESTS=$((NUMTESTS+1))
-
-  respCode=$(curl -sk --output /dev/null --write-out '%{http_code}' -H "$authHeader" "$URL")
-  if [ "$respCode" != "$expectedResponseCode" ]; then
-    echo "TEST FAILED: $msg" 1>&2
-    echo " - Expected $expectedResponseCode and got \"$respCode\" with authHeader=\"$authHeader\" and URL=\"$URL\"" 1>&2
-    #cat $LOGDIR/$PROGNAME.* 1>&2
-    NUMERRORS=$((NUMERRORS+1))
-    #exit 2
-  else
-    logtest "TEST PASSED: $msg"
-  fi
-}
+sleep $WAITFORSTARTUP
 
 adminAuthHeader="Authorization: Basic $(echo -n "admin:badmin" | base64)"
 testAuthHeader="Authorization: Basic $(echo -n "test:123" | base64)"
