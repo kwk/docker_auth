@@ -13,4 +13,5 @@ install:
 
 script:
   - go test -v ./...
+  - echo $PWD
   - cd ./auth_server/test/ && ./test-static-acl.sh
