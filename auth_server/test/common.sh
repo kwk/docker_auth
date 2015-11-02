@@ -33,6 +33,21 @@ cleanup() {
   exit $EXITCODE
 }
 
+# Encode to Base64-URL without padding.
+function base64UrlEncode {
+  echo -n "$1" | openssl enc -a -A | tr -d '=' | tr '/+' '_-'
+}
+
+# Decode from Base64-URL without padding.
+function base64UrlDecode {
+  _l=$((${#1} % 4))
+  if [ $_l -eq 2 ]; then _s="$1"'=='
+  elif [ $_l -eq 3 ]; then _s="$1"'='
+  else _s="$1" ; fi
+  echo "$_s" | tr '_-' '/+' | openssl enc -d -a -A
+}
+
+
 # Sets up some paths and variables and builds or reuses the auth_server artifact.
 # The first argument must be the path to the config file to be used by the
 # auth_server.
@@ -51,6 +66,10 @@ setuptest() {
   NUMTESTS=0
   FAILEDTESTS=$LOGDIR/failed_tests.txt
   CONFIGFILE=$1
+  PUBKEYFILE=$LOGDIR/pubkey.pem
+
+  log "Extract public key from certificate once"
+  openssl x509 -pubkey -noout -in $TESTDIR/certs/auth.crt  > $PUBKEYFILE
 
   # If the ENV_NOCOLOR environment variable is set, don't output colorful reports.
   set +u
@@ -92,13 +111,30 @@ testAuth() {
 
   NUMTESTS=$((NUMTESTS+1))
   LOGFILE=$LOGDIR/$PROGNAME.log.$NUMTESTS
+  OUTFILE=$LOGDIR/$PROGNAME.out.$NUMTESTS
 
   # Start the auth server
   ./$PROGNAME -v 5 -alsologtostderr=true $CONFIGFILE > $LOGFILE 2>&1 & #-log_dir=$LOGDIR
   sleep 2
 
-  respCode=$(curl -sk --output /dev/null --write-out '%{http_code}' -H "$authHeader" "$URL")
+  FAILED=0
+
+  respCode=$(curl -sk --output "$OUTFILE" --write-out '%{http_code}' -H "$authHeader" "$URL")
   if [ "$respCode" != "$expectedResponseCode" ]; then
+    FAILED=1
+  else
+    # Analyse the token we received
+
+    TOKEN=$(cat $OUTFILE | jq ".token" | tr -d '"')
+    HEADER=$(base64UrlDecode $(echo $TOKEN | cut -d '.' -f 1))
+    PAYLOAD=$(base64UrlDecode $(echo $TOKEN | tr -d '"' | cut -d '.' -f 2))
+    SIGNATURE=$(base64UrlDecode $(echo $TOKEN | tr -d '"' | cut -d '.' -f 3))
+
+    # Verify the signature
+    # TODO (kwk) Either implement in bash or switch to Go and docker/libtrust instead
+  fi
+
+  if [ "$FAILED" == "1" ]; then
     echo -e "${COLOR_ERROR}TEST FAILED: $msg${COLOR_NONE}" | tee --append $FAILEDTESTS 1>&2
     echo -e " - Expected $expectedResponseCode and got \"$respCode\" with authHeader=\"$authHeader\" and URL=\"$URL\"" 1>&2
     echo -e "-------------------------   LOG   ------------------------------" 1>&2

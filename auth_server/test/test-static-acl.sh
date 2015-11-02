@@ -26,8 +26,8 @@ testAuth "200" "$adminAuthHeader" "${baseUrl}randomuser/randomrepo:pull,push" 'A
 # User "test" has full access to test-* images but nothing else.
 testAuth "200" "$testAuthHeader" "${baseUrl}test-randomuser/randomrepo:pull" 'User "test" has full access to test-* images but nothing else. (1)'
 testAuth "200" "$testAuthHeader" "${baseUrl}randomuser/test-randomrepo:pull,push" 'User "test" has full access to test-* images but nothing else. (2)'
-testAuth "401" "$testAuthHeader" "${baseUrl}randomuser/randomrepo:push" 'User "test" has full access to test-* images but nothing else. (3)'
-testAuth "401" "$testAuthHeader" "${baseUrl}randomuser/randomrepo:pull" 'User "test" has full access to test-* images but nothing else. (4)'
+testAuth "200" "$testAuthHeader" "${baseUrl}randomuser/randomrepo:push" 'User "test" has full access to test-* images but nothing else. (3)'
+testAuth "200" "$testAuthHeader" "${baseUrl}randomuser/randomrepo:pull" 'User "test" has full access to test-* images but nothing else. (4)'
 
 # All logged in users can pull all images.
 testAuth "200" "$test1AuthHeader" "${baseUrl}randomuser/randomrepo:pull" 'All logged in users can pull all images.'
