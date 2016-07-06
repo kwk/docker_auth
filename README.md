@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/kwk/docker_auth.svg?branch=test-for-auth-server)](https://travis-ci.org/kwk/docker_auth)
+
 Docker Registry 2.0 authentication server
 =========================================
 

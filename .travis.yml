@@ -1,0 +1,18 @@
+language: go
+
+go:
+  - 1.4
+  - 1.5
+
+sudo: false
+
+install:
+  - echo $PWD
+  - cd $GOPATH/src/github.com/kwk/docker_auth/auth_server
+  - go get
+  - go install github.com/kwk/docker_auth/auth_server
+
+script:
+  - echo $PWD
+  - go test -v ./...
+  - cd test/ && ./test-static-acl.sh
